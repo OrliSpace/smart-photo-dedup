@@ -63,12 +63,23 @@ def open_native_folder_dialog() -> str:
 
 class DedupRequestHandler(SimpleHTTPRequestHandler):
     scanner = None
+    active_mode = 'crop'
     server_instance = None
     
     def log_message(self, format, *args):
         pass
 
-    def _send_json(self, payload: dict, status: int = 200):
+    def _send_html_file(self, filename: str):
+        html_path = Path(__file__).parent / 'templates' / filename
+        if html_path.exists():
+            self.send_response(200)
+            self.send_header('Content-type', 'text/html; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(html_path.read_bytes())
+        else:
+            self.send_error(404, f"Template {filename} not found.")
+
+    def _send_json(self, payload, status: int = 200):
         self.send_response(status)
         self.send_header('Content-type', 'application/json; charset=utf-8')
         self.end_headers()
@@ -78,15 +89,30 @@ class DedupRequestHandler(SimpleHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         
-        if path in ['/', '/index.html']:
-            self.send_response(200)
-            self.send_header('Content-type', 'text/html; charset=utf-8')
-            self.end_headers()
-            html_path = Path(__file__).parent / 'templates' / 'index.html'
-            if html_path.exists():
-                self.wfile.write(html_path.read_bytes())
-            else:
-                self.wfile.write(b"Error: templates/index.html not found.")
+        if path in ['/', '/setup', '/setup.html']:
+            self._send_html_file('setup.html')
+            return
+
+        elif path in ['/dashboard', '/dashboard.html']:
+            if not self.scanner:
+                self.send_response(302)
+                self.send_header('Location', '/')
+                self.end_headers()
+                return
+            self._send_html_file('dashboard.html')
+            return
+
+        elif path == '/api/state':
+            if not self.scanner:
+                self._send_json({'has_folder': False})
+                return
+            self._send_json({
+                'has_folder': True,
+                'folder': str(self.scanner.folder),
+                'mode': self.active_mode,
+                'total_photos': len(self.scanner.files),
+                'groups': self.scanner.cluster(mode=self.active_mode)
+            })
             return
 
         elif path.startswith('/thumbnail/'):
@@ -156,21 +182,17 @@ class DedupRequestHandler(SimpleHTTPRequestHandler):
             scanner = DedupScanner(folder_path)
             scanner.scan()
             DedupRequestHandler.scanner = scanner
+            DedupRequestHandler.active_mode = mode
 
-            self._send_json({
-                'success': True,
-                'folder': str(scanner.folder),
-                'total_photos': len(scanner.files),
-                'groups': scanner.cluster(mode=mode)
-            })
+            self._send_json({'success': True})
             return
 
         elif parsed.path == '/api/recluster':
             if not self.scanner:
                 self._send_json([])
                 return
-            query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query) # Or from json body if sent via POST
             mode = data.get('mode', 'crop')
+            DedupRequestHandler.active_mode = mode
             new_groups = self.scanner.cluster(mode)
             self._send_json(new_groups)
             return
@@ -181,7 +203,7 @@ class DedupRequestHandler(SimpleHTTPRequestHandler):
                 return
 
             to_move = data.get('to_move', [])
-            mode = data.get('mode', 'crop')
+            mode = data.get('mode', self.active_mode)
             
             target_dir = self.scanner.folder / "Duplicates"
             target_dir.mkdir(parents=True, exist_ok=True)
@@ -211,7 +233,6 @@ class DedupRequestHandler(SimpleHTTPRequestHandler):
             }
             manifest_file.write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding='utf-8')
 
-            # Rescan root folder to reflect updated state
             self.scanner.scan()
             updated_groups = self.scanner.cluster(mode=mode)
             
@@ -260,7 +281,7 @@ def main():
     DedupRequestHandler.server_instance = server
     url = f"http://127.0.0.1:{port}"
     
-    print(f"Opening dashboard in browser: {url}")
+    print(f"Opening setup screen in browser: {url}")
     threading.Timer(0.8, lambda: webbrowser.open(url)).start()
     
     try:

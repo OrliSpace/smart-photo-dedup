@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Setup - Smart Photo Deduplication Manager</title>
+    <style>
+        :root {
+            --bg: #090d16;
+            --surface: #131b2e;
+            --surface-hover: #223052;
+            --border: #2a3b61;
+            --primary: #38bdf8;
+            --primary-hover: #0ea5e9;
+            --text: #f8fafc;
+            --text-muted: #94a3b8;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            padding: 30px 20px;
+        }
+        .container { max-width: 1450px; margin: 0 auto; }
+
+        /* Shared Top Bar */
+        .top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+        h1 { font-size: 26px; color: var(--primary); }
+        .lang-switch {
+            display: flex;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .lang-btn {
+            background: transparent;
+            color: var(--text-muted);
+            border: none;
+            padding: 8px 16px;
+            font-size: 13px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        .lang-btn.active { background: var(--primary); color: #000; }
+
+        /* Setup Card */
+        .setup-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 700px;
+            margin: 60px auto;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.6);
+            text-align: center;
+        }
+        .setup-card h2 { color: var(--primary); margin-bottom: 24px; font-size: 24px; }
+        .form-group { margin-bottom: 24px; text-align: left; }
+        [dir="rtl"] .form-group { text-align: right; }
+        .form-label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 8px; color: var(--text-muted); }
+
+        .folder-row { display: flex; gap: 10px; }
+        .folder-input {
+            flex: 1;
+            background: #060911;
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 12px 16px;
+            border-radius: 12px;
+            font-size: 14px;
+            font-family: ui-monospace, monospace;
+        }
+        .folder-input:focus { outline: none; border-color: var(--primary); }
+        .btn-browse {
+            background: var(--surface-hover);
+            color: var(--text);
+            border: 1px solid var(--border);
+            padding: 0 18px;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .btn-browse:hover { border-color: var(--primary); }
+
+        .mode-options {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px;
+            margin-bottom: 30px;
+        }
+        .mode-option-card {
+            background: #060911;
+            border: 2px solid var(--border);
+            border-radius: 14px;
+            padding: 18px;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.2s;
+        }
+        .mode-option-card:hover { border-color: var(--text-muted); }
+        .mode-option-card.active {
+            border-color: var(--primary);
+            background: rgba(56, 189, 248, 0.08);
+        }
+        .mode-option-card h3 { font-size: 15px; margin-bottom: 6px; color: var(--text); }
+        .mode-option-card p { font-size: 12px; color: var(--text-muted); }
+
+        .btn-start {
+            background: var(--primary);
+            color: #000;
+            font-weight: 700;
+            border: none;
+            padding: 14px 32px;
+            border-radius: 14px;
+            font-size: 16px;
+            cursor: pointer;
+            width: 100%;
+            transition: all 0.2s;
+        }
+        .btn-start:hover:not(:disabled) { background: var(--primary-hover); transform: translateY(-2px); }
+        .btn-start:disabled { background: #475569; color: #94a3b8; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Shared Top Bar -->
+        <div class="top-bar">
+            <h1 id="t-main-title">⚡ Smart Photo Deduplication Manager</h1>
+            <div class="lang-switch">
+                <button class="lang-btn active" id="btn-lang-en" onclick="setLanguage('en')">English</button>
+                <button class="lang-btn" id="btn-lang-he" onclick="setLanguage('he')">עברית</button>
+            </div>
+        </div>
+
+        <div class="setup-card">
+            <h2 id="t-setup-title">Select Folder & Detection Mode</h2>
+            
+            <div class="form-group">
+                <label class="form-label" id="t-folder-label">Photos Folder Path:</label>
+                <div class="folder-row">
+                    <input type="text" class="folder-input" id="setup-folder-input" placeholder="C:\path\to\photos" onkeydown="if(event.key==='Enter') startScan()" />
+                    <button class="btn-browse" onclick="browseFolder()">📂 <span id="t-browse">Browse</span></button>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" id="t-mode-label">Detection Mode:</label>
+                <div class="mode-options">
+                    <div class="mode-option-card active" id="opt-crop" onclick="selectMode('crop')">
+                        <h3 id="t-opt-crop-title">✂️ Identical / Cropped</h3>
+                        <p id="t-opt-crop-desc">Best for exact duplicates, resized, or cropped images.</p>
+                    </div>
+                    <div class="mode-option-card" id="opt-burst" onclick="selectMode('burst')">
+                        <h3 id="t-opt-burst-title">📸 Burst Shots</h3>
+                        <p id="t-opt-burst-desc">Best for continuous burst captures and very similar scenes.</p>
+                    </div>
+                </div>
+            </div>
+
+            <button class="btn-start" id="btn-start-scan" onclick="startScan()">🚀 Start Scan</button>
+        </div>
+    </div>
+
+    <script>
+        let currentLang = localStorage.getItem('dedup_lang') || 'en';
+        let selectedMode = 'crop';
+
+        const i18n = {
+            en: {
+                mainTitle: "⚡ Smart Photo Deduplication Manager",
+                setupTitle: "Select Folder & Detection Mode",
+                folderLabel: "Photos Folder Path:",
+                browse: "Browse",
+                modeLabel: "Detection Mode:",
+                optCropTitle: "✂️ Identical / Cropped",
+                optCropDesc: "Best for exact duplicates, resized, or cropped images.",
+                optBurstTitle: "📸 Burst Shots",
+                optBurstDesc: "Best for continuous burst captures and very similar scenes.",
+                startScan: "🚀 Start Scan",
+                scanning: "⏳ Scanning images, please wait..."
+            },
+            he: {
+                mainTitle: "⚡ ניהול כפילויות תמונות חכם",
+                setupTitle: "בחר תיקיית תמונות ומצב זיהוי",
+                folderLabel: "נתיב תיקיית התמונות:",
+                browse: "בחר תיקייה",
+                modeLabel: "מצב זיהוי:",
+                optCropTitle: "✂️ תמונות זהות (עד כדי חיתוך)",
+                optCropDesc: "מתאים לכפילויות מדויקות, שינוי גודל או חיתוך.",
+                optBurstTitle: "📸 זיהוי צילומי רצף",
+                optBurstDesc: "מתאים לצילומים רצופים וסצנות דומות מאוד.",
+                startScan: "🚀 התחל סריקה",
+                scanning: "⏳ סורק תמונות, אנא המתן..."
+            }
+        };
+
+        function setLanguage(lang) {
+            currentLang = lang;
+            localStorage.setItem('dedup_lang', lang);
+            document.documentElement.setAttribute('lang', lang);
+            document.documentElement.setAttribute('dir', lang === 'he' ? 'rtl' : 'ltr');
+            document.getElementById('btn-lang-en').classList.toggle('active', lang === 'en');
+            document.getElementById('btn-lang-he').classList.toggle('active', lang === 'he');
+
+            const t = i18n[lang];
+            document.getElementById('t-main-title').innerText = t.mainTitle;
+            document.getElementById('t-setup-title').innerText = t.setupTitle;
+            document.getElementById('t-folder-label').innerText = t.folderLabel;
+            document.getElementById('t-browse').innerText = t.browse;
+            document.getElementById('t-mode-label').innerText = t.modeLabel;
+            document.getElementById('t-opt-crop-title').innerText = t.optCropTitle;
+            document.getElementById('t-opt-crop-desc').innerText = t.optCropDesc;
+            document.getElementById('t-opt-burst-title').innerText = t.optBurstTitle;
+            document.getElementById('t-opt-burst-desc').innerText = t.optBurstDesc;
+            document.getElementById('btn-start-scan').innerText = t.startScan;
+        }
+
+        function selectMode(mode) {
+            selectedMode = mode;
+            document.getElementById('opt-crop').classList.toggle('active', mode === 'crop');
+            document.getElementById('opt-burst').classList.toggle('active', mode === 'burst');
+        }
+
+        async function browseFolder() {
+            try {
+                const res = await fetch('/api/browse', { method: 'POST' });
+                const data = await res.json();
+                if (data.success && data.folder) {
+                    document.getElementById('setup-folder-input').value = data.folder;
+                }
+            } catch (err) {
+                alert('Error opening folder dialog: ' + err);
+            }
+        }
+
+        async function startScan() {
+            const folderPath = document.getElementById('setup-folder-input').value.trim();
+            if (!folderPath) {
+                alert(currentLang === 'he' ? 'נא להזין נתיב תיקייה.' : 'Please enter a folder path.');
+                return;
+            }
+
+            const btn = document.getElementById('btn-start-scan');
+            const t = i18n[currentLang];
+            btn.disabled = true;
+            btn.innerText = t.scanning;
+
+            try {
+                const res = await fetch('/api/load_folder', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ folder: folderPath, mode: selectedMode })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    window.location.href = '/dashboard';
+                } else {
+                    alert(data.error || 'Failed to scan folder.');
+                    btn.disabled = false;
+                    btn.innerText = t.startScan;
+                }
+            } catch (err) {
+                alert('Communication error: ' + err);
+                btn.disabled = false;
+                btn.innerText = t.startScan;
+            }
+        }
+
+        setLanguage(currentLang);
+    </script>
+</body>
+</html>
