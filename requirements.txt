@@ -1,3 +1,10 @@
+# Core image processing and duplicate detection
 pillow>=10.0.0
 imagehash>=4.3.0
 numpy>=1.22.0
+
+# Additional image format support
+pillow-heif>=0.18.0          # HEIC / HEIF
+pillow-avif-plugin>=1.4.6    # AVIF
+rawpy>=0.19.0                # Camera RAW formats
+CairoSVG>=2.7.1              # SVG thumbnails

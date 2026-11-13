@@ -11,8 +11,104 @@ import io
 from pathlib import Path
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 import urllib.parse
-from PIL import Image
+from PIL import Image, ImageOps
 from core import DedupScanner
+import mimetypes
+
+# Optional format handlers. Install the matching packages to enable these formats.
+try:
+    from pillow_heif import register_heif_opener
+    register_heif_opener()  # HEIC / HEIF
+except ImportError:
+    pass
+
+try:
+    import pillow_avif  # noqa: F401 - registers AVIF support with Pillow
+except ImportError:
+    pass
+
+try:
+    import rawpy  # RAW camera formats (CR2, NEF, ARW, DNG, and others)
+except ImportError:
+    rawpy = None
+
+try:
+    import cairosvg  # SVG rasterization
+except ImportError:
+    cairosvg = None
+
+RAW_EXTENSIONS = {
+    '.3fr', '.ari', '.arw', '.bay', '.cap', '.cr2', '.cr3', '.crw', '.dcs',
+    '.dcr', '.dng', '.drf', '.eip', '.erf', '.fff', '.gpr', '.iiq', '.k25',
+    '.kdc', '.mdc', '.mef', '.mos', '.mrw', '.nef', '.nrw', '.obm', '.orf',
+    '.pef', '.ptx', '.pxn', '.r3d', '.raf', '.raw', '.rwl', '.rw2', '.rwz',
+    '.sr2', '.srf', '.srw', '.x3f'
+}
+
+# These formats are commonly displayed directly by modern browsers. Keeping
+# them native preserves animation in GIF and animated WebP files.
+BROWSER_IMAGE_TYPES = {
+    '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+    '.gif': 'image/gif', '.webp': 'image/webp', '.bmp': 'image/bmp',
+    '.avif': 'image/avif'
+}
+
+
+def open_image_for_conversion(file_path: Path) -> Image.Image:
+    """Open an image and return an orientation-corrected Pillow image."""
+    suffix = file_path.suffix.lower()
+
+    if suffix in RAW_EXTENSIONS:
+        if rawpy is None:
+            raise RuntimeError(
+                "RAW support is not installed. Install rawpy and its system dependencies."
+            )
+        with rawpy.imread(str(file_path)) as raw:
+            rgb = raw.postprocess(use_camera_wb=True, output_bps=8)
+        return Image.fromarray(rgb)
+
+    if suffix == '.svg':
+        if cairosvg is None:
+            raise RuntimeError("SVG support is not installed. Install cairosvg.")
+        png_bytes = cairosvg.svg2png(url=str(file_path))
+        with Image.open(io.BytesIO(png_bytes)) as image:
+            return ImageOps.exif_transpose(image).convert('RGB').copy()
+
+    with Image.open(file_path) as image:
+        # Use the first frame for thumbnail/converted previews of animated files.
+        try:
+            image.seek(0)
+        except EOFError:
+            pass
+        return ImageOps.exif_transpose(image).convert('RGB').copy()
+
+
+def send_jpeg(self, file_path: Path, *, thumbnail: bool) -> None:
+    """Send a converted JPEG preview without modifying the original file."""
+    with open_image_for_conversion(file_path) as image:
+        if thumbnail:
+            image.thumbnail((320, 320), Image.Resampling.LANCZOS)
+        buffer = io.BytesIO()
+        image.save(buffer, format='JPEG', quality=88 if thumbnail else 94, optimize=True)
+        payload = buffer.getvalue()
+
+    self.send_response(200)
+    self.send_header('Content-Type', 'image/jpeg')
+    self.send_header('Content-Length', str(len(payload)))
+    self.send_header('Cache-Control', 'no-cache')
+    self.end_headers()
+    self.wfile.write(payload)
+
+
+def resolve_image_path(folder: Path, filename: str) -> Path | None:
+    """Resolve a requested file while preventing paths outside the selected folder."""
+    root = folder.resolve()
+    candidate = (root / filename).resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError:
+        return None
+    return candidate
 
 def open_folder_in_os(path: Path):
     system = platform.system()
@@ -120,23 +216,14 @@ class DedupRequestHandler(SimpleHTTPRequestHandler):
                 self.send_error(404)
                 return
             filename = urllib.parse.unquote(path[len('/thumbnail/'):])
-            file_path = self.scanner.folder / filename
-            if file_path.exists():
+            file_path = resolve_image_path(self.scanner.folder, filename)
+            if file_path and file_path.is_file():
                 try:
-                    with Image.open(file_path) as img:
-                        img.thumbnail((320, 320))
-                        buf = io.BytesIO()
-                        img.save(buf, format="JPEG", quality=80)
-                        data = buf.getvalue()
-                        self.send_response(200)
-                        self.send_header('Content-type', 'image/jpeg')
-                        self.send_header('Cache-Control', 'no-cache')
-                        self.end_headers()
-                        self.wfile.write(data)
-                        return
-                except Exception:
-                    pass
-            self.send_error(404)
+                    send_jpeg(self, file_path, thumbnail=True)
+                    return
+                except Exception as exc:
+                    print(f"[Backend] Thumbnail failed for {filename}: {exc}")
+            self.send_error(404, "Image preview could not be generated.")
             return
 
         elif path.startswith('/full/'):
@@ -144,14 +231,31 @@ class DedupRequestHandler(SimpleHTTPRequestHandler):
                 self.send_error(404)
                 return
             filename = urllib.parse.unquote(path[len('/full/'):])
-            file_path = self.scanner.folder / filename
-            if file_path.exists():
-                self.send_response(200)
-                self.send_header('Content-type', 'image/jpeg')
-                self.end_headers()
-                self.wfile.write(file_path.read_bytes())
-                return
-            self.send_error(404)
+            file_path = resolve_image_path(self.scanner.folder, filename)
+            if file_path and file_path.is_file():
+                suffix = file_path.suffix.lower()
+
+                # Serve browser-friendly formats unchanged (including animated GIF/WebP).
+                content_type = BROWSER_IMAGE_TYPES.get(suffix)
+                if content_type:
+                    self.send_response(200)
+                    self.send_header('Content-Type', content_type)
+                    self.send_header('Content-Length', str(file_path.stat().st_size))
+                    self.send_header('X-Content-Type-Options', 'nosniff')
+                    self.end_headers()
+                    with file_path.open('rb') as image_file:
+                        shutil.copyfileobj(image_file, self.wfile)
+                    return
+
+                # Convert TIFF, HEIC/HEIF, RAW, SVG, and other supported formats
+                # to JPEG for browsers that cannot display them directly.
+                try:
+                    send_jpeg(self, file_path, thumbnail=False)
+                    return
+                except Exception as exc:
+                    print(f"[Backend] Full image conversion failed for {filename}: {exc}")
+
+            self.send_error(404, "Image could not be displayed. Check installed format support.")
             return
 
         self.send_error(404)
