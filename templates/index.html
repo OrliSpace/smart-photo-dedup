@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Photo Deduplication Manager</title>
+    <style>
+        :root {
+            --bg: #090d16;
+            --surface: #131b2e;
+            --surface-card: #1a243d;
+            --surface-hover: #223052;
+            --border: #2a3b61;
+            --primary: #38bdf8;
+            --primary-hover: #0ea5e9;
+            --accent-green: #22c55e;
+            --accent-orange: #f97316;
+            --text: #f8fafc;
+            --text-muted: #94a3b8;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            padding: 30px 20px 140px 20px;
+        }
+        .container { max-width: 1450px; margin: 0 auto; }
+        header {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            padding: 24px 30px;
+            margin-bottom: 24px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+        }
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        h1 { font-size: 26px; color: var(--primary); }
+        .lang-switch {
+            display: flex;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .lang-btn {
+            background: transparent;
+            color: var(--text-muted);
+            border: none;
+            padding: 6px 14px;
+            font-size: 13px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        .lang-btn.active { background: var(--primary); color: #000; }
+
+        /* Folder Picker Bar */
+        .folder-bar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .folder-input {
+            flex: 1;
+            min-width: 260px;
+            background: #060911;
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 10px 14px;
+            border-radius: 10px;
+            font-size: 13px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        }
+        .folder-input:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+        .btn-action {
+            background: var(--surface-hover);
+            color: var(--text);
+            border: 1px solid var(--border);
+            padding: 10px 16px;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s;
+            white-space: nowrap;
+        }
+        .btn-action:hover:not(:disabled) {
+            border-color: var(--primary);
+            background: #2b3b61;
+        }
+        .btn-scan {
+            background: var(--primary);
+            color: #000;
+            border-color: var(--primary);
+        }
+        .btn-scan:hover:not(:disabled) {
+            background: var(--primary-hover);
+        }
+        .btn-action:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .controls-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
+            background: rgba(0,0,0,0.2);
+            padding: 16px 20px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+        }
+        .stats-row { display: flex; gap: 12px; flex-wrap: wrap; }
+        .stat-pill {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-size: 13px;
+        }
+        .stat-pill strong { color: var(--primary); }
+        .mode-selector { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        .mode-btn {
+            background: var(--bg);
+            color: var(--text-muted);
+            border: 1px solid var(--border);
+            padding: 8px 16px;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .mode-btn.active { background: var(--primary); color: #000; border-color: var(--primary); }
+        .group-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            margin-bottom: 24px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+        .group-header {
+            background: #17223b;
+            padding: 14px 22px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border);
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .group-title { font-size: 16px; font-weight: 700; }
+        .badge { padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+        .badge-exact { background: rgba(239,68,68,0.2); color: #f87171; border: 1px solid #ef4444; }
+        .badge-visual { background: rgba(234,179,8,0.2); color: #facc15; border: 1px solid #eab308; }
+        .badge-burst { background: rgba(56,189,248,0.2); color: #38bdf8; border: 1px solid #38bdf8; }
+        .group-actions { display: flex; gap: 8px; }
+        .btn-sm {
+            background: var(--surface-hover);
+            color: var(--text);
+            border: 1px solid var(--border);
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        .btn-sm:hover { border-color: var(--primary); }
+        .photos-grid { display: flex; flex-wrap: wrap; gap: 16px; padding: 20px; }
+        .photo-card {
+            background: var(--surface-card);
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            width: 230px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            cursor: pointer;
+        }
+        .photo-card.is-keeper { border-color: var(--accent-green); background: #0f241a; }
+        .photo-card.is-move { border-color: var(--accent-orange); background: #261711; }
+        .img-box { width: 230px; height: 220px; background: #060a14; display: flex; align-items: center; justify-content: center; position: relative; }
+        .img-box img { max-width: 100%; max-height: 100%; object-fit: contain; }
+        .zoom-btn {
+            position: absolute; top: 8px; right: 8px; background: rgba(0,0,0,0.65);
+            color: #fff; border: none; border-radius: 6px; padding: 4px 8px; font-size: 11px; text-decoration: none;
+        }
+        [dir="rtl"] .zoom-btn { right: auto; left: 8px; }
+        .card-details { padding: 12px; font-size: 12px; display: flex; flex-direction: column; gap: 6px; }
+        .file-title { color: #f1f5f9; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .file-meta { display: flex; justify-content: space-between; color: var(--text-muted); font-size: 11px; }
+        .toggle-btn {
+            margin-top: 6px; padding: 6px 10px; border-radius: 6px; font-size: 11px; font-weight: 600;
+            border: 1px solid var(--border); cursor: pointer; text-align: center;
+        }
+        .is-keeper .toggle-btn { background: rgba(34,197,94,0.15); color: var(--accent-green); border-color: var(--accent-green); }
+        .is-move .toggle-btn { background: rgba(249,115,22,0.15); color: var(--accent-orange); border-color: var(--accent-orange); }
+        .floating-bar {
+            position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+            background: #111827; border: 1px solid var(--border); padding: 14px 28px;
+            border-radius: 20px; display: flex; align-items: center; gap: 24px; z-index: 1000;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.7);
+        }
+        .btn-confirm {
+            background: var(--accent-green); color: #000; font-weight: 700; border: none;
+            padding: 12px 24px; border-radius: 12px; font-size: 15px; cursor: pointer;
+        }
+        .btn-confirm:disabled { background: #475569; color: #94a3b8; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-top">
+                <h1 id="t-title">⚡ Smart Photo Deduplication Manager</h1>
+                <div class="lang-switch">
+                    <button class="lang-btn active" id="btn-lang-en" onclick="setLanguage('en')">English</button>
+                    <button class="lang-btn" id="btn-lang-he" onclick="setLanguage('he')">עברית</button>
+                </div>
+            </div>
+
+            <div class="folder-bar">
+                <input type="text" class="folder-input" id="input-folder" placeholder="Enter folder path or click Browse..." onkeydown="if(event.key==='Enter') loadFolder()" />
+                <button class="btn-action" id="btn-browse" onclick="browseFolder()">📂 Browse</button>
+                <button class="btn-action btn-scan" id="btn-scan" onclick="loadFolder()">🔍 Scan</button>
+            </div>
+
+            <div class="controls-row">
+                <div class="stats-row">
+                    <div class="stat-pill"><span id="t-total-photos">Total Photos:</span> <strong id="lbl-total">0</strong></div>
+                    <div class="stat-pill"><span id="t-total-groups">Duplicate Groups:</span> <strong id="lbl-groups">0</strong></div>
+                </div>
+                <div class="mode-selector">
+                    <button class="mode-btn active" id="btn-mode-crop" onclick="setMode('crop')">✂️ <span id="t-mode-crop">Identical / Cropped</span></button>
+                    <button class="mode-btn" id="btn-mode-burst" onclick="setMode('burst')">📸 <span id="t-mode-burst">Burst Shots</span></button>
+                </div>
+            </div>
+        </header>
+        <div id="groups-container"></div>
+    </div>
+
+    <div class="floating-bar">
+        <div><span id="t-selected">Selected for move:</span> <strong id="move-count">0</strong> <span id="t-photos-word">photos</span></div>
+        <button class="btn-confirm" id="btn-submit" onclick="executeMove()" disabled>🚀 Confirm & Move</button>
+    </div>
+
+    <script>
+        let currentLang = 'en';
+        let currentMode = 'crop';
+        let groups = [];
+        let fileStates = {};
+        let hasFolder = false;
+
+        async function init() {
+            const res = await fetch('/api/init');
+            const data = await res.json();
+            hasFolder = data.has_folder;
+            document.getElementById('input-folder').value = data.folder || '';
+            document.getElementById('lbl-total').innerText = data.total_photos || 0;
+            groups = data.groups || [];
+            fileStates = {};
+            initStates();
+            render();
+        }
+
+        async function browseFolder() {
+            const btn = document.getElementById('btn-browse');
+            btn.disabled = true;
+            try {
+                const res = await fetch('/api/browse', { method: 'POST' });
+                const data = await res.json();
+                if (data.success && data.folder) {
+                    document.getElementById('input-folder').value = data.folder;
+                    await loadFolder();
+                }
+            } catch (err) {
+                alert('Error opening folder dialog: ' + err);
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        async function loadFolder() {
+            const folderPath = document.getElementById('input-folder').value.trim();
+            if (!folderPath) {
+                alert(currentLang === 'he' ? 'נא להזין או לבחור נתיב תיקייה.' : 'Please enter or select a folder path.');
+                return;
+            }
+
+            const btnScan = document.getElementById('btn-scan');
+            const container = document.getElementById('groups-container');
+            btnScan.disabled = true;
+            container.innerHTML = `<div style="text-align:center; padding: 60px; color: var(--primary); font-size: 18px;">⏳ ${currentLang === 'he' ? 'סורק תמונות בתיקייה...' : 'Scanning images in folder...'}</div>`;
+
+            try {
+                const res = await fetch('/api/load_folder', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ folder: folderPath, mode: currentMode })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    hasFolder = true;
+                    document.getElementById('input-folder').value = data.folder;
+                    document.getElementById('lbl-total').innerText = data.total_photos;
+                    groups = data.groups;
+                    fileStates = {}; // Clear old states completely
+                    initStates();
+                    render();
+                } else {
+                    alert(data.error || 'Failed to load folder.');
+                    render();
+                }
+            } catch (err) {
+                alert('Error scanning folder: ' + err);
+                render();
+            } finally {
+                btnScan.disabled = false;
+            }
+        }
+
+        function initStates() {
+            groups.forEach(g => {
+                g.members.forEach(m => {
+                    if (fileStates[m.name] === undefined) {
+                        fileStates[m.name] = m.is_default_keeper ? 'keep' : 'move';
+                    }
+                });
+            });
+        }
+
+        async function setMode(mode) {
+            currentMode = mode;
+            document.getElementById('btn-mode-crop').classList.toggle('active', mode === 'crop');
+            document.getElementById('btn-mode-burst').classList.toggle('active', mode === 'burst');
+            if (!hasFolder) return;
+            const res = await fetch(`/api/recluster?mode=${mode}`);
+            groups = await res.json();
+            initStates();
+            render();
+        }
+
+        function setLanguage(lang) {
+            currentLang = lang;
+            document.documentElement.setAttribute('lang', lang);
+            document.documentElement.setAttribute('dir', lang === 'he' ? 'rtl' : 'ltr');
+            document.getElementById('btn-lang-en').classList.toggle('active', lang === 'en');
+            document.getElementById('btn-lang-he').classList.toggle('active', lang === 'he');
+            
+            if (lang === 'he') {
+                document.getElementById('t-title').innerText = '⚡ ניהול כפילויות תמונות חכם';
+                document.getElementById('input-folder').placeholder = 'הכנס נתיב לתיקייה או לחץ Browse...';
+                document.getElementById('btn-browse').innerText = '📂 בחר תיקייה';
+                document.getElementById('btn-scan').innerText = '🔍 סרוק';
+                document.getElementById('t-total-photos').innerText = 'סה"כ תמונות:';
+                document.getElementById('t-total-groups').innerText = 'קבוצות כפילות:';
+                document.getElementById('t-mode-crop').innerText = 'תמונות זהות (עד כדי חיתוך)';
+                document.getElementById('t-mode-burst').innerText = 'זיהוי צילומי רצף';
+                document.getElementById('t-selected').innerText = 'נבחרו להעברה:';
+                document.getElementById('t-photos-word').innerText = 'תמונות';
+                document.getElementById('btn-submit').innerText = '🚀 אשר והעבר תמונות';
+            } else {
+                document.getElementById('t-title').innerText = '⚡ Smart Photo Deduplication Manager';
+                document.getElementById('input-folder').placeholder = 'Enter folder path or click Browse...';
+                document.getElementById('btn-browse').innerText = '📂 Browse';
+                document.getElementById('btn-scan').innerText = '🔍 Scan';
+                document.getElementById('t-total-photos').innerText = 'Total Photos:';
+                document.getElementById('t-total-groups').innerText = 'Duplicate Groups:';
+                document.getElementById('t-mode-crop').innerText = 'Identical / Cropped';
+                document.getElementById('t-mode-burst').innerText = 'Burst Shots';
+                document.getElementById('t-selected').innerText = 'Selected for move:';
+                document.getElementById('t-photos-word').innerText = 'photos';
+                document.getElementById('btn-submit').innerText = '🚀 Confirm & Move';
+            }
+            render();
+        }
+
+        function render() {
+            const container = document.getElementById('groups-container');
+            container.innerHTML = '';
+            document.getElementById('lbl-groups').innerText = groups.length;
+
+            if (!hasFolder) {
+                container.innerHTML = `<div style="text-align:center; padding: 60px; color: var(--text-muted); font-size: 16px;">${currentLang === 'he' ? 'בחר תיקייה למעלה כדי להתחיל בסריקה.' : 'Select or enter a folder path above to begin scanning.'}</div>`;
+                document.getElementById('move-count').innerText = '0';
+                document.getElementById('btn-submit').disabled = true;
+                return;
+            }
+
+            if (groups.length === 0) {
+                container.innerHTML = `<div style="text-align:center; padding: 60px; color: var(--text-muted); font-size: 16px;">${currentLang === 'he' ? '✨ לא נמצאו כפילויות בתיקייה זו!' : '✨ No duplicates found in this folder!'}</div>`;
+                document.getElementById('move-count').innerText = '0';
+                document.getElementById('btn-submit').disabled = true;
+                return;
+            }
+
+            let totalToMove = 0;
+            const cacheBuster = Date.now();
+
+            groups.forEach(g => {
+                const groupEl = document.createElement('div');
+                groupEl.className = 'group-card';
+                
+                groupEl.innerHTML = `
+                    <div class="group-header">
+                        <div class="group-title">${currentLang === 'he' ? 'קבוצה' : 'Group'} #${g.id} (${g.members.length} ${currentLang === 'he' ? 'תמונות' : 'photos'})</div>
+                        <span class="badge ${g.badge}">${g.category}</span>
+                        <div class="group-actions">
+                            <button class="btn-sm" onclick="setGroupState(${g.id}, 'keep')">${currentLang === 'he' ? 'שמור הכל' : 'Keep All'}</button>
+                            <button class="btn-sm" onclick="resetGroupDefault(${g.id})">${currentLang === 'he' ? 'שחזר ברירת מחדל' : 'Reset Default'}</button>
+                        </div>
+                    </div>
+                    <div class="photos-grid" id="grid-${g.id}"></div>
+                `;
+                container.appendChild(groupEl);
+
+                const grid = groupEl.querySelector(`#grid-${g.id}`);
+                g.members.forEach(m => {
+                    const state = fileStates[m.name] || (m.is_default_keeper ? 'keep' : 'move');
+                    if (state === 'move') totalToMove++;
+                    const isKeeper = (state === 'keep');
+
+                    const card = document.createElement('div');
+                    card.className = `photo-card ${isKeeper ? 'is-keeper' : 'is-move'}`;
+                    card.onclick = () => togglePhoto(m.name);
+                    
+                    card.innerHTML = `
+                        <div class="img-box">
+                            <img src="/thumbnail/${encodeURIComponent(m.name)}?v=${cacheBuster}" loading="lazy" />
+                            <a class="zoom-btn" href="/full/${encodeURIComponent(m.name)}" target="_blank" onclick="event.stopPropagation()">${currentLang === 'he' ? 'פתח מקור' : 'View Full'}</a>
+                        </div>
+                        <div class="card-details">
+                            <div style="font-weight:700; color:${isKeeper ? 'var(--accent-green)' : 'var(--accent-orange)'}">
+                                ${isKeeper ? (currentLang === 'he' ? '⭐ נשמר' : '⭐ Keep') : (currentLang === 'he' ? '📦 יועבר' : '📦 Move to Duplicates')}
+                            </div>
+                            <div class="file-title" title="${m.name}">${m.name}</div>
+                            <div class="file-meta">
+                                <span>📐 ${m.w}x${m.h}</span>
+                                <span>💾 ${m.size_kb} KB</span>
+                            </div>
+                            <button class="toggle-btn" onclick="togglePhoto('${m.name}'); event.stopPropagation();">
+                                ${isKeeper ? (currentLang === 'he' ? 'העבר ⬅️' : 'Move ➡️') : (currentLang === 'he' ? 'שמור ⬅️' : 'Keep ⬅️')}
+                            </button>
+                        </div>
+                    `;
+                    grid.appendChild(card);
+                });
+            });
+
+            document.getElementById('move-count').innerText = totalToMove;
+            document.getElementById('btn-submit').disabled = (totalToMove === 0);
+        }
+
+        function togglePhoto(name) {
+            fileStates[name] = fileStates[name] === 'keep' ? 'move' : 'keep';
+            render();
+        }
+
+        function setGroupState(groupId, state) {
+            const g = groups.find(x => x.id === groupId);
+            if (g) {
+                g.members.forEach(m => fileStates[m.name] = state);
+                render();
+            }
+        }
+
+        function resetGroupDefault(groupId) {
+            const g = groups.find(x => x.id === groupId);
+            if (g) {
+                g.members.forEach(m => fileStates[m.name] = m.is_default_keeper ? 'keep' : 'move');
+                render();
+            }
+        }
+
+        async function executeMove() {
+            const toMove = Object.keys(fileStates).filter(k => fileStates[k] === 'move');
+            if (toMove.length === 0) return;
+            
+            const btn = document.getElementById('btn-submit');
+            btn.disabled = true;
+
+            try {
+                const res = await fetch('/api/move', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ to_move: toMove, mode: currentMode })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    let msg = `Successfully moved ${data.moved_count} photos to Duplicates folder!`;
+                    if (data.failed_count > 0) {
+                        msg += `\n(${data.failed_count} files failed — see terminal for details)`;
+                    }
+                    alert(msg);
+
+                    // Refresh UI directly from the rescanned root folder state
+                    document.getElementById('lbl-total').innerText = data.total_photos;
+                    groups = data.groups;
+                    fileStates = {};
+                    initStates();
+                    render();
+                }
+            } catch (err) {
+                alert('Error moving files: ' + err);
+            } finally {
+                btn.disabled = (Object.keys(fileStates).filter(k => fileStates[k] === 'move').length === 0);
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>
